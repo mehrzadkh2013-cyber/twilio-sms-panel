@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>پنل واقعی SMS با Twilio</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f6f8;font-family:Tahoma,Arial,sans-serif;color:#172126}
+.wrap{max-width:720px;margin:28px auto;padding:12px}.panel{background:#fff;border:1px solid #e5eaed;border-radius:26px;overflow:hidden;box-shadow:0 18px 50px #0001}
+.head{padding:28px;background:#20343c;color:#fff}.head h1{margin:0 0 8px;font-size:26px}.head p{margin:0;color:#dbe5e8;line-height:1.8}
+.body{padding:25px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:17px}.full{grid-column:1/-1}
+label{display:block;font-weight:bold;margin-bottom:8px}input,textarea{width:100%;padding:14px;border:1px solid #d9e0e3;border-radius:13px;font:inherit;font-size:16px}input{direction:ltr}textarea{min-height:125px;line-height:1.8;resize:vertical}
+.senderbox{padding:13px;border:1px dashed #b8c4c9;border-radius:13px;background:#f8fafb;direction:ltr;font-weight:bold}
+.hint{font-size:12px;color:#728087;margin-top:6px;line-height:1.7}
+button{width:100%;margin-top:20px;padding:15px;border:0;border-radius:13px;background:#20343c;color:#fff;font:inherit;font-weight:bold;font-size:17px;cursor:pointer}
+.status{margin-top:15px;text-align:center;min-height:24px;font-weight:bold}.ok{color:#087443}.err{color:#b3261e}
+.preview{margin-top:20px;background:#f7f9fa;border:1px solid #e1e7e9;border-radius:16px;padding:16px}.bubble{background:#fff;border:1px solid #e2e7e9;border-radius:15px;padding:14px;line-height:1.9;white-space:pre-wrap}.from{font-weight:bold;margin-bottom:5px}
+.note{margin-top:18px;background:#fff8e7;color:#72591c;padding:14px;border-radius:13px;font-size:13px;line-height:1.9}
+@media(max-width:600px){.grid{grid-template-columns:1fr}.full{grid-column:auto}.body{padding:18px}}
+</style>
+</head>
+<body>
+<div class="wrap"><div class="panel">
+<div class="head"><h1>پنل واقعی SMS</h1><p>ارسال مستقیم از بک‌اند به Twilio؛ بدون باز کردن برنامه پیامک گوشی.</p></div>
+<div class="body">
+<div class="grid">
+<div>
+<label>شماره گیرنده</label>
+<input id="phone" type="tel" inputmode="tel" placeholder="+994501234567">
+<div class="hint">شماره را با کد کشور وارد کن.</div>
+</div>
+<div>
+<label>Sender ID فعال</label>
+<div id="sender" class="senderbox">در حال دریافت...</div>
+<div class="hint">این مقدار از سرور می‌آید و باید Sender ID مجاز خودت باشد.</div>
+</div>
+<div>
+<label>کد</label>
+<input id="code" type="text" inputmode="numeric" maxlength="8" placeholder="225489">
+</div>
+<div class="full">
+<label>متن پیام</label>
+<textarea id="text" placeholder="سلام، کد شما: {code}"></textarea>
+<div class="hint">برای درج کد از {code} استفاده کن.</div>
+</div>
+</div>
+<button onclick="sendSMS()">ارسال واقعی SMS</button>
+<div id="status" class="status"></div>
+<div class="preview"><div class="bubble"><div id="previewFrom" class="from">Sender ID</div><div id="previewText">پیش‌نمایش پیام</div></div></div>
+<div class="note"><b>نکته امنیتی:</b> Sender ID از سمت کاربر قابل تغییر نیست و فقط مقدار تنظیم‌شده در سرور استفاده می‌شود. برای استفاده از نام برند، باید همان Sender ID را در Twilio مجاز/ثبت کرده باشی.</div>
+</div></div></div>
+<script>
+const phone=document.getElementById("phone"),code=document.getElementById("code"),text=document.getElementById("text");
+function digits(v){return v.replace(/[۰-۹]/g,d=>"۰۱۲۳۴۵۶۷۸۹".indexOf(d))}
+function update(){
+ const c=digits(code.value);
+ document.getElementById("previewText").textContent=(text.value||"پیش‌نمایش پیام").replaceAll("{code}",c||"{code}");
+}
+[phone,code,text].forEach(x=>x.addEventListener("input",update));
+fetch("/health").then(r=>r.json()).then(x=>document.getElementById("sender").textContent=x.senderId||"تنظیم نشده").catch(()=>document.getElementById("sender").textContent="خطا");
+async function sendSMS(){
+ const status=document.getElementById("status");
+ const p=digits(phone.value.trim()), c=digits(code.value.trim()), t=text.value.trim();
+ if(!/^\+[1-9]\d{7,14}$/.test(p)){status.className="status err";status.textContent="شماره را با + و کد کشور وارد کن.";return}
+ if(!/^\d{4,8}$/.test(c)){status.className="status err";status.textContent="کد باید ۴ تا ۸ رقم باشد.";return}
+ if(!t){status.className="status err";status.textContent="متن پیام را وارد کن.";return}
+ status.className="status";status.textContent="در حال ارسال...";
+ try{
+  const r=await fetch("/api/send-sms",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:p,code:c,text:t})});
+  const data=await r.json();
+  if(!r.ok||!data.ok) throw new Error(data.error||"ارسال ناموفق بود");
+  status.className="status ok";status.textContent="SMS با موفقیت به Twilio ارسال شد.";
+ }catch(e){status.className="status err";status.textContent=e.message||"ارتباط با سرور برقرار نشد."}
+}
+update();
+</script>
+</body>
+</html>
